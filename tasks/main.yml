@@ -1,0 +1,51 @@
+# Copyright 2016 Yanis Guenane <yanis+ansible@guenane.org>
+# Author: Yanis Guenane <yanis+ansible@guenane.org>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
+- name: Include OS-specific variables
+  include_vars: "{{ ansible_os_family }}.yml"
+
+- name: Install the nsd package
+  package: name=nsd
+
+- name: Include platform specific tasks
+  include:  "{{ ansible_os_family }}.yml"
+  when: ansible_os_family == 'FreeBSD'
+
+- name: Detect if nsd-control-setup has been run
+  stat: path={{ nsd_configuration_file_path }}/nsd_control.pem
+  register: nsd_control
+
+- name: Run nsd-control-setup (if necessary)
+  shell: nsd-control-setup
+  when: not nsd_control.stat.exists
+
+- name: Ensure the zones directory is created
+  file: path={{ nsd_configuration_file_path }}/zones/
+        state=directory
+
+- name: Configure the nsd configuration file
+  template: src={{ item }}
+            dest={{ nsd_configuration_file_path }}/conf.d/{{ item }}
+  with_items:
+    - zone.conf
+    - server.conf
+    - remote-control.conf
+  notify: reload nsd
+
+- name: Start the nsd service
+  service: name=nsd
+           state=started
+           enabled=yes
